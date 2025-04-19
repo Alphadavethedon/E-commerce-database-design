@@ -1,0 +1,18 @@
+# 🛍️ E-Commerce Database System
+
+## Features
+- **Product Management**: Hierarchical categories + brands
+- **Inventory Tracking**: SKU-level stock control
+- **Enterprise Design**: Normalized 3NF schema
+
+## Schema Overview
+![ERD Diagram](ERD/ecommerce_erd.png)
+
+## Quick Start
+```bash
+# Start MySQL container
+docker-compose -f docker/docker-compose.yml up -d
+
+# Initialize database
+mysql -h 127.0.0.1 -u root -p < sql/schema.sql
+mysql -h 127.0.0.1 -u root -p ecommerce_db < sql/sample_data.sql
