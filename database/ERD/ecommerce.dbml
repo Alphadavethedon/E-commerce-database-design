@@ -1,0 +1,30 @@
+// Database Schema for E-Commerce Platform
+Table brands {
+  id int [pk, increment]
+  name varchar(100)
+  logo_url varchar(255)
+  description text
+}
+
+Table product_categories {
+  id int [pk, increment]
+  name varchar(100)
+  parent_id int [ref: > product_categories.id]
+}
+
+Table products {
+  id int [pk, increment]
+  name varchar(255)
+  description text
+  base_price decimal(10,2)
+  brand_id int [ref: > brands.id]
+  category_id int [ref: > product_categories.id]
+}
+
+Table product_items {
+  id int [pk, increment]
+  product_id int [ref: > products.id]
+  sku varchar(100) [unique]
+  price decimal(10,2)
+  quantity_in_stock int
+}
