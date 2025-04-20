@@ -1,866 +1,346 @@
-##### DATABASE INITIALIZATION
-CREATE DATABASE IF NOT EXISTS ecommerce;
-USE ecommerce;
+##### ENHANCED DATABASE INITIALIZATION #####
+CREATE DATABASE IF NOT EXISTS africa_commerce 
+CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE africa_commerce;
 
-##### TENANT MANAGEMENT
+##### MULTI-TENANCY WITH ADVANCED FEATURES #####
 CREATE TABLE tenants (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   api_key CHAR(64) NOT NULL UNIQUE,
-  plan ENUM('starter', 'pro', 'enterprise') DEFAULT 'starter',
+  plan ENUM('starter', 'pro', 'enterprise', 'marketplace') DEFAULT 'starter',
   monthly_fee DECIMAL(10,2) DEFAULT 0.00,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+  transaction_fee DECIMAL(5,2) DEFAULT 1.5 COMMENT 'Percentage fee per transaction',
+  default_currency CHAR(3) DEFAULT 'KES',
+  timezone VARCHAR(50) DEFAULT 'Africa/Nairobi',
+  is_active BOOLEAN DEFAULT TRUE,
+  onboarding_status ENUM('pending', 'verified', 'rejected') DEFAULT 'pending',
+  kyc_data JSON COMMENT 'Stores KYC documents and verification status',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_plan_status (plan, onboarding_status)
+) ENGINE=InnoDB PARTITION BY HASH(id) PARTITIONS 10;
 
-##### CUSTOMER ACCOUNTS
+##### AI-POWERED CUSTOMER MANAGEMENT #####
 CREATE TABLE customers (
   id INT AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT NOT NULL,
   name VARCHAR(100),
-  email VARCHAR(100) UNIQUE,
+  email VARCHAR(100),
+  phone_number VARCHAR(20) NOT NULL COMMENT 'Primary identifier in African context',
   password VARCHAR(255) NOT NULL,
-  phone_number VARCHAR(20),
-  address TEXT,
+  address JSON COMMENT 'Structured address with geolocation',
   is_verified BOOLEAN DEFAULT FALSE,
+  verification_method ENUM('sms', 'ussd', 'whatsapp', 'email') DEFAULT 'sms',
+  credit_score TINYINT COMMENT 'Internal credit rating 1-10',
+  loyalty_points INT DEFAULT 0,
+  preferred_language CHAR(2) DEFAULT 'en',
+  marketing_consent JSON COMMENT 'Stores consent for different channels',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
+  last_login DATETIME,
+  device_fingerprint VARCHAR(255),
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uk_phone_tenant (phone_number, tenant_id),
+  INDEX idx_phone (phone_number),
+  INDEX idx_tenant_phone (tenant_id, phone_number),
+  FULLTEXT INDEX ft_search (name, email, phone_number)
+) ENGINE=InnoDB;
 
-##### BRANDS
-CREATE TABLE brands (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  logo_url VARCHAR(255),
-  description TEXT
-);
-
-##### PRODUCT CATEGORIES
+##### INTELLIGENT PRODUCT CATALOG #####
 CREATE TABLE product_categories (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id INT NOT NULL,
   name VARCHAR(100) NOT NULL,
   parent_id INT,
-  FOREIGN KEY (parent_id) REFERENCES product_categories(id) ON DELETE SET NULL
-);
+  image_url VARCHAR(255),
+  is_featured BOOLEAN DEFAULT FALSE,
+  commission_rate DECIMAL(5,2) DEFAULT 0.00 COMMENT 'For marketplace models',
+  seo_metadata JSON,
+  ai_tags JSON COMMENT 'Automatically generated tags from ML models',
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES product_categories(id) ON DELETE SET NULL,
+  INDEX idx_tenant_category (tenant_id, name),
+  FULLTEXT INDEX ft_category_name (name)
+) ENGINE=InnoDB;
 
-##### PRODUCTS
 CREATE TABLE products (
   id INT AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT NOT NULL,
+  category_id INT NOT NULL,
   name VARCHAR(255) NOT NULL,
   description TEXT,
-  base_price DECIMAL(10,2) CHECK (base_price > 0),
-  brand_id INT NOT NULL,
-  category_id INT NOT NULL,
-  vendor_id INT,
+  base_price DECIMAL(10,2) UNSIGNED CHECK (base_price > 0),
+  compare_at_price DECIMAL(10,2),
+  cost_price DECIMAL(10,2) COMMENT 'For margin calculations',
+  is_active BOOLEAN DEFAULT TRUE,
+  is_digital BOOLEAN DEFAULT FALSE,
+  delivery_profile_id INT COMMENT 'Custom delivery rules',
+  tax_profile_id INT,
+  ai_recommendations JSON COMMENT 'ML-generated cross-sell/up-sell suggestions',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  FOREIGN KEY (brand_id) REFERENCES brands(id),
   FOREIGN KEY (category_id) REFERENCES product_categories(id),
-  FOREIGN KEY (vendor_id) REFERENCES vendors(id)
-);
+  INDEX idx_tenant_product (tenant_id, is_active),
+  FULLTEXT INDEX ft_product_search (name, description)
+) ENGINE=InnoDB PARTITION BY HASH(tenant_id) PARTITIONS 10;
 
-##### INVENTORY MANAGEMENT
-CREATE TABLE product_items (
+##### AFRICAN PAYMENT GATEWAY INTEGRATION #####
+CREATE TABLE payment_gateways (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  product_id INT NOT NULL,
-  sku VARCHAR(100) UNIQUE NOT NULL,
-  price DECIMAL(10,2) NOT NULL,
-  inventory_quantity INT NOT NULL DEFAULT 0,
-  barcode VARCHAR(100),
-  is_default BOOLEAN DEFAULT FALSE,
-  image_id INT,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-);
-
-##### SIZE CATEGORIES
-CREATE TABLE size_categories (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL,
-  code VARCHAR(20) UNIQUE NOT NULL,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
-
-##### SIZE OPTIONS
-CREATE TABLE size_options (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  size_category_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL,
-  value VARCHAR(20) NOT NULL,
-  sort_order INT DEFAULT 0,
-  FOREIGN KEY (size_category_id) REFERENCES size_categories(id) ON DELETE CASCADE
-);
-
-##### COLORS
-CREATE TABLE colors (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL,
-  hex_code VARCHAR(7) NOT NULL,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
-
-##### PRODUCT VARIATIONS
-CREATE TABLE product_variations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  product_id INT NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-);
-
-##### VARIATION VALUES
-CREATE TABLE variation_values (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  variation_id INT NOT NULL,
-  option_type ENUM('size', 'color', 'material', 'style') NOT NULL,
-  size_option_id INT,
-  color_id INT,
-  custom_value VARCHAR(100),
-  FOREIGN KEY (variation_id) REFERENCES product_variations(id) ON DELETE CASCADE,
-  FOREIGN KEY (size_option_id) REFERENCES size_options(id) ON DELETE SET NULL,
-  FOREIGN KEY (color_id) REFERENCES colors(id) ON DELETE SET NULL
-);
-
-##### PRODUCT ITEM VARIATIONS
-CREATE TABLE product_item_variations (
-  product_item_id INT NOT NULL,
-  variation_value_id INT NOT NULL,
-  PRIMARY KEY (product_item_id, variation_value_id),
-  FOREIGN KEY (product_item_id) REFERENCES product_items(id) ON DELETE CASCADE,
-  FOREIGN KEY (variation_value_id) REFERENCES variation_values(id) ON DELETE CASCADE
-);
-
-##### PRODUCT SEARCH INDEX
-CREATE TABLE product_search_index (
-  product_id INT NOT NULL,
-  content TEXT NOT NULL,
-  PRIMARY KEY (product_id),
-  FULLTEXT INDEX idx_fulltext_content (content),
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-);
-
-##### COUNTIES
-CREATE TABLE counties (
-  code TINYINT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL
-);
-
-##### PAYMENTS
-CREATE TABLE payments (
-  payment_id INT AUTO_INCREMENT PRIMARY KEY,
-  customer_id INT NOT NULL,
-  amount DECIMAL(10,2) NOT NULL,
-  county_code TINYINT NOT NULL,
-  paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (customer_id) REFERENCES customers(id),
-  FOREIGN KEY (county_code) REFERENCES counties(code)
-);
-
-##### COUNTY VENDORS
-CREATE TABLE county_vendors (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  county_code TINYINT NOT NULL,
-  business_name VARCHAR(100) NOT NULL,
-  mpesa_paybill VARCHAR(10),
-  airtel_money VARCHAR(15),
-  FOREIGN KEY (county_code) REFERENCES counties(code)
-);
-
-##### PRODUCT TRANSLATIONS
-CREATE TABLE product_translations (
-  product_id INT NOT NULL,
-  county_code TINYINT NOT NULL,
-  language ENUM('sw','en','kam','kik','luo') DEFAULT 'sw',
-  translated_name VARCHAR(255) NOT NULL,
-  PRIMARY KEY (product_id, county_code, language)
-);
-
-##### VENDORS TEMPORARY TABLE (FOR MIGRATION)
-CREATE TABLE vendors_temp (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT,
-  business_name VARCHAR(100) NOT NULL
-);
-
-##### DELIVERIES
-CREATE TABLE deliveries (
-  id INT AUTO_INCREMENT,
-  from_county TINYINT NOT NULL,
-  to_county TINYINT NOT NULL,
-  cost DECIMAL(6,2) NOT NULL,
-  PRIMARY KEY (id, to_county)
-) PARTITION BY LIST (to_county) (
-  PARTITION p_nairobi VALUES IN (47),
-  PARTITION p_coastal VALUES IN (1,2,3),
-  PARTITION p_other VALUES IN (4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                                21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,
-                                36,37,38,39,40,41,42,43,44,45,46)
-);
-
-##### DYNAMIC DELIVERY COST FUNCTION
-DELIMITER //
-CREATE FUNCTION calculate_delivery(
-    from_county TINYINT,
-    to_county TINYINT,
-    weight_kg DECIMAL(5,2)
-) RETURNS DECIMAL(7,2) DETERMINISTIC
-BEGIN
-    DECLARE base_rate DECIMAL(5,2);
-
-    SELECT 
-        CASE 
-            WHEN from_county = to_county THEN 100.00
-            WHEN from_county = 47 THEN 250.00
-            ELSE 350.00
-        END * (1 + weight_kg/10) 
-    INTO base_rate;
-
-    RETURN base_rate;
-END//
-DELIMITER ;
-
-##### REVENUE REPORT BY COUNTY
-SELECT 
-    c.name,
-    COUNT(p.payment_id) AS transactions,
-    SUM(p.amount) AS revenue
-FROM payments p
-JOIN counties c ON p.county_code = c.code
-GROUP BY c.code
-ORDER BY revenue DESC;
-
-######### DATABASE INITIALIZATION
-CREATE DATABASE IF NOT EXISTS ecommerce;
-USE ecommerce;
-
-##### TENANT MANAGEMENT
-CREATE TABLE tenants (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  api_key CHAR(64) NOT NULL UNIQUE,
-  plan ENUM('starter', 'pro', 'enterprise') DEFAULT 'starter',
-  monthly_fee DECIMAL(10,2) DEFAULT 0.00,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  default_currency CHAR(3) DEFAULT 'KES',
-  timezone VARCHAR(50) DEFAULT 'Africa/Nairobi',
-  is_active BOOLEAN DEFAULT TRUE
-);
-
-##### CUSTOMER ACCOUNTS
-CREATE TABLE customers (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  name VARCHAR(100),
-  email VARCHAR(100) UNIQUE,
-  password VARCHAR(255) NOT NULL,
-  phone_number VARCHAR(20),
-  address TEXT,
-  is_verified BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  last_login DATETIME,
-  language_preference CHAR(2) DEFAULT 'en',
-  marketing_opt_in BOOLEAN DEFAULT FALSE,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  INDEX idx_phone_number (phone_number)
-);
-
-##### MOBILE MONEY INTEGRATION
-CREATE TABLE mobile_money_providers (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL,
-  shortcode VARCHAR(10) NOT NULL,
-  country_code VARCHAR(3) NOT NULL,
+  name VARCHAR(50) NOT NULL COMMENT 'M-Pesa, Airtel Money, Flutterwave',
+  country_codes JSON NOT NULL COMMENT 'Countries where gateway operates',
+  processing_fee DECIMAL(5,2) NOT NULL,
+  settlement_days TINYINT DEFAULT 1,
   is_active BOOLEAN DEFAULT TRUE,
-  logo_url VARCHAR(255)
-);
+  config_schema JSON COMMENT 'Gateway-specific configuration',
+  webhook_url VARCHAR(255)
+) ENGINE=InnoDB;
 
-CREATE TABLE mobile_money_transactions (
+CREATE TABLE payment_transactions (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id INT NOT NULL,
   customer_id INT NOT NULL,
-  provider_id INT NOT NULL,
-  transaction_id VARCHAR(50) NOT NULL,
-  amount DECIMAL(10,2) NOT NULL,
-  phone_number VARCHAR(15) NOT NULL,
-  status ENUM('pending','completed','failed','reversed') DEFAULT 'pending',
-  receipt_number VARCHAR(50),
-  transaction_time DATETIME,
+  gateway_id INT NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  currency CHAR(3) DEFAULT 'KES',
+  transaction_id VARCHAR(100) NOT NULL,
+  phone_number VARCHAR(20) COMMENT 'For mobile money',
+  status ENUM('pending', 'completed', 'failed', 'refunded') DEFAULT 'pending',
+  fee_amount DECIMAL(10,2) DEFAULT 0.00,
+  settlement_id VARCHAR(100),
+  metadata JSON,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
   FOREIGN KEY (customer_id) REFERENCES customers(id),
-  FOREIGN KEY (provider_id) REFERENCES mobile_money_providers(id),
-  INDEX idx_transaction_id (transaction_id),
-  INDEX idx_phone_number (phone_number)
+  FOREIGN KEY (gateway_id) REFERENCES payment_gateways(id),
+  UNIQUE KEY uk_gateway_transaction (gateway_id, transaction_id),
+  INDEX idx_tenant_transaction (tenant_id, status, created_at),
+  INDEX idx_customer_transactions (customer_id, created_at)
+) ENGINE=InnoDB PARTITION BY RANGE (YEAR(created_at)) (
+  PARTITION p2023 VALUES LESS THAN (2024),
+  PARTITION p2024 VALUES LESS THAN (2025),
+  PARTITION pmax VALUES LESS THAN MAXVALUE
 );
 
-##### LOCAL PAYMENT METHODS
-CREATE TABLE local_payment_methods (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL,
-  description VARCHAR(255),
-  is_cash_based BOOLEAN DEFAULT FALSE,
-  requires_verification BOOLEAN DEFAULT FALSE,
-  icon_class VARCHAR(50)
-);
-
-CREATE TABLE customer_payment_preferences (
-  customer_id INT NOT NULL,
-  payment_method_id INT NOT NULL,
-  is_default BOOLEAN DEFAULT FALSE,
-  details JSON COMMENT 'Method-specific details like M-Pesa number',
-  PRIMARY KEY (customer_id, payment_method_id),
-  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-  FOREIGN KEY (payment_method_id) REFERENCES local_payment_methods(id)
-);
-
-##### COUNTIES & REGIONAL DATA
-CREATE TABLE counties (
-  code TINYINT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL,
-  region VARCHAR(50) NOT NULL,
-  capital VARCHAR(50),
-  population INT,
-  area_sq_km INT
-);
-
-CREATE TABLE informal_settlements (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  county_code TINYINT NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  common_landmarks TEXT,
-  delivery_instructions TEXT,
-  FOREIGN KEY (county_code) REFERENCES counties(code),
-  INDEX idx_settlement_name (name)
-);
-
-##### DELIVERY & LOGISTICS
-CREATE TABLE delivery_partners (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  coverage JSON NOT NULL COMMENT 'JSON array of county codes served',
-  base_fee DECIMAL(10,2) NOT NULL,
-  per_km_rate DECIMAL(10,2) NOT NULL,
-  is_active BOOLEAN DEFAULT TRUE,
-  contact_phone VARCHAR(20) NOT NULL,
-  service_levels JSON COMMENT 'Standard, Express, Same-day etc.'
-);
-
+##### INNOVATIVE DELIVERY SYSTEM #####
 CREATE TABLE delivery_zones (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  county_code TINYINT NOT NULL,
-  zone_name VARCHAR(50) NOT NULL,
-  estimated_delivery_days INT NOT NULL,
-  surcharge DECIMAL(10,2) DEFAULT 0.00,
-  FOREIGN KEY (county_code) REFERENCES counties(code),
-  UNIQUE KEY (county_code, zone_name)
-);
+  tenant_id INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  polygon_coordinates JSON COMMENT 'GeoJSON polygon for zone coverage',
+  base_fee DECIMAL(10,2) NOT NULL,
+  fee_per_km DECIMAL(10,2) DEFAULT 0.00,
+  estimated_days_min TINYINT NOT NULL,
+  estimated_days_max TINYINT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  SPATIAL INDEX idx_zone_coverage (polygon_coordinates)
+) ENGINE=InnoDB;
 
 CREATE TABLE pickup_stations (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  county_code TINYINT NOT NULL,
-  location VARCHAR(255) NOT NULL,
-  contact_phone VARCHAR(20) NOT NULL,
-  is_active BOOLEAN DEFAULT TRUE,
-  coordinates POINT SRID 4326,
-  operating_hours VARCHAR(100),
-  FOREIGN KEY (county_code) REFERENCES counties(code),
-  SPATIAL INDEX (coordinates)
-);
-
-##### BRANDS & CATEGORIES
-CREATE TABLE brands (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  logo_url VARCHAR(255),
-  description TEXT,
-  is_local BOOLEAN DEFAULT FALSE,
-  country_of_origin CHAR(2)
-);
-
-CREATE TABLE product_categories (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  parent_id INT,
-  image_url VARCHAR(255),
-  is_featured BOOLEAN DEFAULT FALSE,
-  FOREIGN KEY (parent_id) REFERENCES product_categories(id) ON DELETE SET NULL,
-  INDEX idx_parent_id (parent_id)
-);
-
-##### PRODUCTS & INVENTORY
-CREATE TABLE products (
-  id INT AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
-  base_price DECIMAL(10,2) CHECK (base_price > 0),
-  brand_id INT NOT NULL,
-  category_id INT NOT NULL,
-  vendor_id INT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  name VARCHAR(100) NOT NULL,
+  location POINT NOT NULL SRID 4326,
+  address JSON,
+  contact_phone VARCHAR(20) NOT NULL,
+  operating_hours JSON,
   is_active BOOLEAN DEFAULT TRUE,
-  is_featured BOOLEAN DEFAULT FALSE,
-  tax_rate DECIMAL(5,2) DEFAULT 0.00,
-  weight_kg DECIMAL(5,2) DEFAULT 0.00,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  FOREIGN KEY (brand_id) REFERENCES brands(id),
-  FOREIGN KEY (category_id) REFERENCES product_categories(id),
-  FULLTEXT INDEX idx_product_search (name, description)
-);
+  SPATIAL INDEX idx_location (location)
+) ENGINE=InnoDB;
 
-CREATE TABLE product_items (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+##### AI-POWERED INVENTORY MANAGEMENT #####
+CREATE TABLE inventory_items (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
   product_id INT NOT NULL,
-  sku VARCHAR(100) UNIQUE NOT NULL,
-  price DECIMAL(10,2) NOT NULL,
-  inventory_quantity INT NOT NULL DEFAULT 0,
+  sku VARCHAR(100) NOT NULL,
   barcode VARCHAR(100),
-  is_default BOOLEAN DEFAULT FALSE,
-  image_id INT,
-  weight_kg DECIMAL(5,2) DEFAULT 0.00,
-  dimensions VARCHAR(50) COMMENT 'Format: LxWxH in cm',
+  price DECIMAL(10,2) NOT NULL,
+  cost_price DECIMAL(10,2),
+  quantity INT NOT NULL DEFAULT 0,
+  low_stock_threshold INT DEFAULT 5,
+  reorder_point INT DEFAULT 10,
+  weight_kg DECIMAL(6,3),
+  dimensions VARCHAR(50) COMMENT 'LxWxH in cm',
+  is_active BOOLEAN DEFAULT TRUE,
+  ai_demand_forecast JSON COMMENT 'ML predicted demand data',
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-  INDEX idx_sku (sku),
+  UNIQUE KEY uk_product_sku (product_id, sku),
+  INDEX idx_low_stock (quantity, low_stock_threshold),
   INDEX idx_barcode (barcode)
-);
+) ENGINE=InnoDB;
 
-##### SIZE & VARIATIONS
-CREATE TABLE size_categories (
+##### MARKET GAP SOLUTIONS #####
+-- Agent Network Management
+CREATE TABLE sales_agents (
   id INT AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL,
-  code VARCHAR(20) UNIQUE NOT NULL,
-  applies_to_category_id INT,
+  name VARCHAR(100) NOT NULL,
+  phone VARCHAR(20) NOT NULL,
+  id_number VARCHAR(50),
+  location POINT SRID 4326,
+  tier ENUM('bronze', 'silver', 'gold') DEFAULT 'bronze',
+  commission_rate DECIMAL(5,2) DEFAULT 5.00,
+  is_active BOOLEAN DEFAULT TRUE,
+  performance_metrics JSON,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  FOREIGN KEY (applies_to_category_id) REFERENCES product_categories(id)
-);
+  UNIQUE KEY uk_tenant_phone (tenant_id, phone),
+  SPATIAL INDEX idx_agent_location (location)
+) ENGINE=InnoDB;
 
-CREATE TABLE size_options (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  size_category_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL,
-  value VARCHAR(20) NOT NULL,
-  sort_order INT DEFAULT 0,
-  size_chart_url VARCHAR(255),
-  FOREIGN KEY (size_category_id) REFERENCES size_categories(id) ON DELETE CASCADE
-);
-
-CREATE TABLE colors (
+-- Buy Now Pay Later (BNPL)
+CREATE TABLE bnpl_plans (
   id INT AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL,
-  hex_code VARCHAR(7) NOT NULL,
-  color_group VARCHAR(50),
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  installment_count TINYINT NOT NULL,
+  interest_rate DECIMAL(5,2) DEFAULT 0.00,
+  min_amount DECIMAL(10,2),
+  max_amount DECIMAL(10,2),
+  is_active BOOLEAN DEFAULT TRUE,
+  eligibility_criteria JSON,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB;
 
-CREATE TABLE product_variations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  product_id INT NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  is_required BOOLEAN DEFAULT TRUE,
-  display_order INT DEFAULT 0,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-);
-
-CREATE TABLE variation_values (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  variation_id INT NOT NULL,
-  option_type ENUM('size', 'color', 'material', 'style', 'other') NOT NULL,
-  size_option_id INT,
-  color_id INT,
-  custom_value VARCHAR(100),
-  image_url VARCHAR(255),
-  FOREIGN KEY (variation_id) REFERENCES product_variations(id) ON DELETE CASCADE,
-  FOREIGN KEY (size_option_id) REFERENCES size_options(id) ON DELETE SET NULL,
-  FOREIGN KEY (color_id) REFERENCES colors(id) ON DELETE SET NULL
-);
-
-CREATE TABLE product_item_variations (
-  product_item_id INT NOT NULL,
-  variation_value_id INT NOT NULL,
-  PRIMARY KEY (product_item_id, variation_value_id),
-  FOREIGN KEY (product_item_id) REFERENCES product_items(id) ON DELETE CASCADE,
-  FOREIGN KEY (variation_value_id) REFERENCES variation_values(id) ON DELETE CASCADE
-);
-
-##### WAREHOUSING & INVENTORY
-CREATE TABLE warehouses (
+##### MONETIZATION FEATURES #####
+-- Dynamic Pricing Engine
+CREATE TABLE pricing_rules (
   id INT AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT NOT NULL,
   name VARCHAR(100) NOT NULL,
-  county_code TINYINT NOT NULL,
-  location VARCHAR(255) NOT NULL,
-  contact_phone VARCHAR(20) NOT NULL,
-  capacity INT COMMENT 'Total capacity in cubic meters',
-  is_active BOOLEAN DEFAULT TRUE,
-  coordinates POINT SRID 4326,
-  manager_name VARCHAR(100),
-  operating_hours VARCHAR(100),
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  FOREIGN KEY (county_code) REFERENCES counties(code),
-  SPATIAL INDEX (coordinates)
-);
-
-CREATE TABLE inventory_movements (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  product_item_id INT NOT NULL,
-  warehouse_id INT NOT NULL,
-  quantity INT NOT NULL,
-  movement_type ENUM('in','out','transfer','adjustment') NOT NULL,
-  reference_id VARCHAR(50) COMMENT 'Order ID, Transfer ID, etc.',
-  recorded_by INT COMMENT 'User who recorded this movement',
-  recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  notes TEXT,
-  FOREIGN KEY (product_item_id) REFERENCES product_items(id),
-  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
-  INDEX idx_reference (reference_id),
-  INDEX idx_recorded_at (recorded_at)
-);
-
-CREATE TABLE stock_level_alerts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  product_id INT NOT NULL,
-  threshold_quantity INT NOT NULL,
-  notification_emails JSON COMMENT 'Array of emails to notify',
-  is_active BOOLEAN DEFAULT TRUE,
-  last_triggered_at DATETIME,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-);
-
-##### MULTILINGUAL SUPPORT
-CREATE TABLE languages (
-  code CHAR(2) PRIMARY KEY,
-  name VARCHAR(50) NOT NULL,
-  native_name VARCHAR(50) NOT NULL,
-  is_rtl BOOLEAN DEFAULT FALSE,
-  is_active BOOLEAN DEFAULT TRUE
-);
-
-CREATE TABLE product_translations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  product_id INT NOT NULL,
-  language_code CHAR(2) NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
-  features JSON COMMENT 'Translated product features in JSON format',
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-  FOREIGN KEY (language_code) REFERENCES languages(code),
-  UNIQUE KEY (product_id, language_code)
-);
-
-CREATE TABLE category_translations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  category_id INT NOT NULL,
-  language_code CHAR(2) NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  description TEXT,
-  FOREIGN KEY (category_id) REFERENCES product_categories(id) ON DELETE CASCADE,
-  FOREIGN KEY (language_code) REFERENCES languages(code),
-  UNIQUE KEY (category_id, language_code)
-);
-
-##### CUSTOMER EXPERIENCE
-CREATE TABLE customer_support_channels (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  channel_type ENUM('whatsapp','phone','email','facebook','twitter','instagram','live_chat') NOT NULL,
-  value VARCHAR(100) NOT NULL,
-  is_primary BOOLEAN DEFAULT FALSE,
-  hours_of_operation VARCHAR(100),
-  average_response_time VARCHAR(20),
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
-
-CREATE TABLE customer_support_tickets (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  customer_id INT NOT NULL,
-  channel_id INT NOT NULL,
-  subject VARCHAR(255) NOT NULL,
-  description TEXT NOT NULL,
-  status ENUM('open','in_progress','resolved','closed') DEFAULT 'open',
-  priority ENUM('low','medium','high','critical') DEFAULT 'medium',
-  assigned_to INT COMMENT 'Support agent ID',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  resolved_at DATETIME,
-  satisfaction_rating TINYINT CHECK (satisfaction_rating BETWEEN 1 AND 5),
-  FOREIGN KEY (customer_id) REFERENCES customers(id),
-  FOREIGN KEY (channel_id) REFERENCES customer_support_channels(id),
-  INDEX idx_status (status),
-  INDEX idx_priority (priority)
-);
-
-CREATE TABLE product_reviews (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  product_id INT NOT NULL,
-  customer_id INT NOT NULL,
-  rating TINYINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
-  review_text TEXT,
-  is_verified_purchase BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  helpful_count INT DEFAULT 0,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-  FOREIGN KEY (customer_id) REFERENCES customers(id),
-  INDEX idx_rating (rating),
-  INDEX idx_verified (is_verified_purchase)
-);
-
-##### MARKETING & PROMOTIONS
-CREATE TABLE promotional_campaigns (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  description TEXT,
-  start_date DATETIME NOT NULL,
-  end_date DATETIME NOT NULL,
-  is_active BOOLEAN DEFAULT TRUE,
-  target_counties JSON COMMENT 'Array of county codes',
-  target_customer_segments JSON,
-  min_order_amount DECIMAL(10,2),
-  max_uses_per_customer INT,
-  image_url VARCHAR(255),
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  INDEX idx_dates (start_date, end_date)
-);
-
-CREATE TABLE discounts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  campaign_id INT,
-  discount_type ENUM('percentage','fixed_amount','free_shipping','buy_x_get_y') NOT NULL,
+  rule_type ENUM('discount', 'surcharge', 'fixed') NOT NULL,
   value DECIMAL(10,2) NOT NULL,
-  max_discount_amount DECIMAL(10,2),
-  min_products INT,
-  code VARCHAR(20) UNIQUE,
-  is_reusable BOOLEAN DEFAULT FALSE,
-  max_uses INT,
-  current_uses INT DEFAULT 0,
-  applies_to_category_id INT,
-  applies_to_product_id INT,
-  FOREIGN KEY (campaign_id) REFERENCES promotional_campaigns(id) ON DELETE CASCADE,
-  FOREIGN KEY (applies_to_category_id) REFERENCES product_categories(id),
-  FOREIGN KEY (applies_to_product_id) REFERENCES products(id),
-  INDEX idx_code (code)
-);
+  conditions JSON NOT NULL COMMENT 'JSON logic for rule application',
+  start_date DATETIME NOT NULL,
+  end_date DATETIME,
+  is_active BOOLEAN DEFAULT TRUE,
+  priority TINYINT DEFAULT 0,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  INDEX idx_tenant_active (tenant_id, is_active, start_date, end_date)
+) ENGINE=InnoDB;
 
-CREATE TABLE flash_sales (
+-- Advertising Spots
+CREATE TABLE ad_spaces (
   id INT AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT NOT NULL,
   name VARCHAR(100) NOT NULL,
-  start_time DATETIME NOT NULL,
-  end_time DATETIME NOT NULL,
+  location ENUM('homepage', 'category', 'product', 'cart', 'checkout') NOT NULL,
+  price_model ENUM('cpm', 'cpc', 'flat') NOT NULL,
+  base_price DECIMAL(10,2) NOT NULL,
+  targeting_options JSON,
   is_active BOOLEAN DEFAULT TRUE,
-  max_items_per_customer INT,
-  landing_page_url VARCHAR(255),
-  banner_image_url VARCHAR(255),
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  INDEX idx_times (start_time, end_time)
-);
-
-CREATE TABLE flash_sale_products (
-  flash_sale_id INT NOT NULL,
-  product_item_id INT NOT NULL,
-  sale_price DECIMAL(10,2) NOT NULL,
-  initial_quantity INT NOT NULL,
-  remaining_quantity INT NOT NULL,
-  purchase_limit_per_customer INT,
-  PRIMARY KEY (flash_sale_id, product_item_id),
-  FOREIGN KEY (flash_sale_id) REFERENCES flash_sales(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_item_id) REFERENCES product_items(id)
-);
-
-##### ANALYTICS & REPORTING
-CREATE TABLE customer_segments (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL,
-  criteria JSON NOT NULL COMMENT 'JSON defining segment criteria',
-  customer_count INT DEFAULT 0,
-  last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB;
 
-CREATE TABLE customer_behavior_events (
+##### PERFORMANCE OPTIMIZATIONS #####
+-- Materialized Views for Analytics
+CREATE MATERIALIZED VIEW mv_daily_sales 
+REFRESH COMPLETE ON DEMAND
+AS
+SELECT 
+  tenant_id,
+  DATE(created_at) AS sale_date,
+  COUNT(*) AS order_count,
+  SUM(amount) AS total_revenue,
+  SUM(amount * transaction_fee/100) AS fee_income
+FROM payment_transactions
+WHERE status = 'completed'
+GROUP BY tenant_id, DATE(created_at);
+
+-- Sharding-ready design
+CREATE TABLE shard_mapping (
+  tenant_id INT PRIMARY KEY,
+  shard_id TINYINT NOT NULL,
+  server_name VARCHAR(100) NOT NULL,
+  UNIQUE KEY uk_shard_mapping (shard_id, tenant_id)
+) ENGINE=InnoDB;
+
+##### SCALABILITY FEATURES #####
+-- Event Sourcing for Critical Operations
+CREATE TABLE event_log (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  customer_id INT NOT NULL,
-  event_type ENUM('page_view','product_view','cart_add','cart_remove','search','purchase','wishlist_add','login','logout') NOT NULL,
-  product_id INT,
-  search_query VARCHAR(255),
-  metadata JSON COMMENT 'Additional event data',
+  event_type VARCHAR(50) NOT NULL,
+  entity_type VARCHAR(50) NOT NULL,
+  entity_id VARCHAR(100) NOT NULL,
+  event_data JSON NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  device_type ENUM('mobile','desktop','tablet','other'),
-  ip_address VARCHAR(45),
-  FOREIGN KEY (customer_id) REFERENCES customers(id),
-  FOREIGN KEY (product_id) REFERENCES products(id),
-  INDEX idx_event_type (event_type),
-  INDEX idx_created_at (created_at)
+  INDEX idx_entity_events (entity_type, entity_id),
+  INDEX idx_event_timeline (created_at)
+) ENGINE=InnoDB PARTITION BY RANGE (UNIX_TIMESTAMP(created_at)) (
+  PARTITION p2023 VALUES LESS THAN (UNIX_TIMESTAMP('2024-01-01')),
+  PARTITION p2024 VALUES LESS THAN (UNIX_TIMESTAMP('2025-01-01')),
+  PARTITION pmax VALUES LESS THAN MAXVALUE
 );
 
-CREATE TABLE sales_trends (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  date DATE NOT NULL,
-  total_sales DECIMAL(12,2) NOT NULL,
-  order_count INT NOT NULL,
-  average_order_value DECIMAL(10,2) NOT NULL,
-  new_customers INT NOT NULL,
-  returning_customers INT NOT NULL,
-  top_county_code TINYINT,
-  top_product_id INT,
-  mobile_money_percentage DECIMAL(5,2),
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  FOREIGN KEY (top_county_code) REFERENCES counties(code),
-  FOREIGN KEY (top_product_id) REFERENCES products(id),
-  UNIQUE KEY (tenant_id, date)
-);
-
-##### SECURITY & FRAUD PREVENTION
-CREATE TABLE login_attempts (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  customer_id INT,
-  email VARCHAR(100) NOT NULL,
-  ip_address VARCHAR(45) NOT NULL,
-  user_agent VARCHAR(255),
-  success BOOLEAN NOT NULL,
-  attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  location_data JSON,
-  INDEX idx_customer_id (customer_id),
-  INDEX idx_email (email),
-  INDEX idx_ip_address (ip_address),
-  INDEX idx_attempted_at (attempted_at)
-);
-
-CREATE TABLE fraud_indicators (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL,
-  description TEXT,
-  risk_score TINYINT NOT NULL CHECK (risk_score BETWEEN 1 AND 10),
-  is_active BOOLEAN DEFAULT TRUE
-);
-
-CREATE TABLE order_fraud_assessments (
-  order_id INT PRIMARY KEY,
-  total_risk_score TINYINT NOT NULL CHECK (total_risk_score BETWEEN 0 AND 100),
-  indicators JSON COMMENT 'Array of fraud indicator IDs and scores',
-  is_flagged BOOLEAN DEFAULT FALSE,
-  reviewed_by INT COMMENT 'Admin who reviewed this assessment',
-  review_decision ENUM('approve','reject','manual_review') DEFAULT 'manual_review',
-  reviewed_at DATETIME,
-  notes TEXT,
-  INDEX idx_risk_score (total_risk_score),
-  INDEX idx_review_decision (review_decision)
-);
-
-##### UTILITY TABLES
-CREATE TABLE exchange_rates (
-  from_currency CHAR(3) NOT NULL,
-  to_currency CHAR(3) NOT NULL,
-  rate DECIMAL(10,4) NOT NULL,
-  last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (from_currency, to_currency)
-);
-
-CREATE TABLE scheduled_tasks (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  task_name VARCHAR(100) NOT NULL,
-  description TEXT,
-  cron_expression VARCHAR(50) NOT NULL,
-  is_active BOOLEAN DEFAULT TRUE,
-  last_run TIMESTAMP NULL,
-  next_run TIMESTAMP NULL,
-  task_class VARCHAR(255) NOT NULL,
-  task_parameters JSON
-);
-
-CREATE TABLE system_settings (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  setting_key VARCHAR(100) NOT NULL UNIQUE,
-  setting_value TEXT NOT NULL,
-  data_type ENUM('string','number','boolean','json','array') NOT NULL,
-  description TEXT,
-  is_public BOOLEAN DEFAULT FALSE,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
-##### DELIVERY COST FUNCTION
+##### ADVANCED FUNCTIONS #####
 DELIMITER //
-CREATE FUNCTION calculate_delivery(
-    from_county TINYINT,
-    to_county TINYINT,
-    weight_kg DECIMAL(5,2),
-    delivery_type ENUM('standard','express','same_day')
-) RETURNS DECIMAL(7,2) DETERMINISTIC
+CREATE FUNCTION calculate_dynamic_price(
+  product_id INT,
+  customer_id INT,
+  quantity INT
+) RETURNS DECIMAL(10,2) DETERMINISTIC
 BEGIN
-    DECLARE base_rate DECIMAL(5,2);
-    DECLARE weight_surcharge DECIMAL(5,2);
-    DECLARE delivery_multiplier DECIMAL(3,2);
-    
-    -- Set delivery type multiplier
-    SET delivery_multiplier = CASE 
-        WHEN delivery_type = 'express' THEN 1.5
-        WHEN delivery_type = 'same_day' THEN 2.0
-        ELSE 1.0
-    END;
-    
-    -- Calculate base rate
-    SELECT 
-        CASE 
-            WHEN from_county = to_county THEN 100.00
-            WHEN from_county = 47 THEN 250.00 -- Nairobi
-            ELSE 350.00
-        END * delivery_multiplier
-    INTO base_rate;
-    
-    -- Calculate weight surcharge (free for first 5kg)
-    SET weight_surcharge = GREATEST(0, weight_kg - 5) * 20;
-    
-    RETURN base_rate + weight_surcharge;
+  DECLARE base_price DECIMAL(10,2);
+  DECLARE final_price DECIMAL(10,2);
+  DECLARE customer_tier VARCHAR(20);
+  
+  -- Get base price
+  SELECT base_price INTO base_price FROM products WHERE id = product_id;
+  
+  -- Get customer tier if available
+  SELECT tier INTO customer_tier FROM customers WHERE id = customer_id;
+  
+  -- Apply pricing rules (simplified example)
+  SET final_price = base_price;
+  
+  -- Quantity discount
+  IF quantity > 10 THEN
+    SET final_price = final_price * 0.9; -- 10% discount
+  END IF;
+  
+  -- Loyalty discount
+  IF customer_tier = 'gold' THEN
+    SET final_price = final_price * 0.85; -- 15% discount
+  ELSEIF customer_tier = 'silver' THEN
+    SET final_price = final_price * 0.9; -- 10% discount
+  END IF;
+  
+  RETURN final_price;
 END//
+
 DELIMITER ;
 
-##### REVENUE REPORT BY COUNTY
-CREATE VIEW county_revenue_report AS
+##### INNOVATIVE MONETIZATION VIEWS #####
+-- Customer Lifetime Value
+CREATE VIEW customer_lifetime_value AS
 SELECT 
-    c.code AS county_code,
-    c.name AS county_name,
-    c.region,
-    COUNT(p.payment_id) AS transactions,
-    SUM(p.amount) AS revenue,
-    COUNT(DISTINCT p.customer_id) AS unique_customers,
-    AVG(p.amount) AS avg_order_value
-FROM payments p
-JOIN counties c ON p.county_code = c.code
-GROUP BY c.code, c.name, c.region
-ORDER BY revenue DESC;
+  c.id AS customer_id,
+  c.name,
+  c.phone_number,
+  COUNT(t.id) AS transaction_count,
+  SUM(t.amount) AS total_spend,
+  DATEDIFF(NOW(), MIN(t.created_at)) AS days_active,
+  SUM(t.amount) / COUNT(DISTINCT DATE(t.created_at))) AS avg_daily_spend
+FROM customers c
+JOIN payment_transactions t ON c.id = t.customer_id
+WHERE t.status = 'completed'
+GROUP BY c.id, c.name, c.phone_number;
 
-##### TOP PRODUCTS BY COUNTY VIEW
-CREATE VIEW top_products_by_county AS
+-- Product Affinity Analysis
+CREATE VIEW product_affinity AS
 SELECT 
-    p.county_code,
-    c.name AS county_name,
-    pr.id AS product_id,
-    pr.name AS product_name,
-    COUNT(*) AS units_sold,
-    SUM(oi.price * oi.quantity) AS revenue
-FROM order_items oi
-JOIN orders o ON oi.order_id = o.id
-JOIN payments p ON o.payment_id = p.payment_id
-JOIN counties c ON p.county_code = c.code
-JOIN product_items pi ON oi.product_item_id = pi.id
-JOIN products pr ON pi.product_id = pr.id
-GROUP BY p.county_code, c.name, pr.id, pr.name
-ORDER BY p.county_code, revenue DESC;
-
-##### INITIAL DATA INSERTS
-INSERT INTO counties (code, name, region) VALUES
-(1, 'Mombasa', 'Coast'), (2, 'Kwale', 'Coast'), (3, 'Kilifi', 'Coast'),
-(47, 'Nairobi', 'Nairobi'), (4, 'Tana River', 'Coast'), (5, 'Lamu', 'Coast');
-
-INSERT INTO mobile_money_providers (name, shortcode, country_code) VALUES
-('M-Pesa', '303303', 'KE'), ('Airtel Money', '555555', 'KE'), 
-('T-Kash', '851', 'KE'), ('Equitel', '247247', 'KE');
-
-INSERT INTO languages (code, name, native_name, is_active) VALUES
-('en', 'English', 'English', TRUE), ('sw', 'Swahili', 'Kiswahili', TRUE),
-('kam', 'Kamba', 'Kikamba', TRUE), ('kik', 'Kikuyu', 'Gikuyu', TRUE),
-('luo', 'Luo', 'Dholuo', TRUE);
+  p1.id AS product_id,
+  p1.name AS product_name,
+  p2.id AS related_product_id,
+  p2.name AS related_product_name,
+  COUNT(*) AS co_purchase_count
+FROM order_items oi1
+JOIN order_items oi2 ON oi1.order_id = oi2.order_id AND oi1.product_id != oi2.product_id
+JOIN products p1 ON oi1.product_id = p1.id
+JOIN products p2 ON oi2.product_id = p2.id
+GROUP BY p1.id, p1.name, p2.id, p2.name
+ORDER BY co_purchase_count DESC;
