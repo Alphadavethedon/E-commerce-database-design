@@ -1,0 +1,54 @@
+Today's Goals
+
+🧩 Step 1: Database Setup
+Make sure MySQL is running.
+
+Create database: ecommerce
+
+Import tables like:
+
+users
+
+products
+
+orders
+
+categories
+
+delivery_logics
+
+counties
+
+
+
+🧩 Step 2: Design a Basic Backend Flow (API Ready)
+Folder structure in VS Code
+
+arduino
+Copy
+Edit
+/ecommerce-backend
+├── db/
+├── routes/
+├── controllers/
+├── models/
+├── index.js
+└── config.js
+Define basic CRUD operations for products and users
+
+🧩 Step 3: UI Design (Wireframe / Frontend Starter)
+If you want, we can also sketch or build a simple homepage:
+
+Header (logo, search, cart)
+
+Product listings
+
+Footer with contact/social links
+
+INTERGRATION
+Mpesa Daraja API Integration
+
+Vendor dashboard
+
+Delivery tracking logic
+
