@@ -1016,3 +1016,196 @@ CREATE INDEX idx_product_price ON products(tenant_id, base_price);
 CREATE INDEX idx_product_active ON products(tenant_id, is_active);
 CREATE INDEX idx_order_vendor ON order_items(vendor_id);
 CREATE INDEX idx_payment_method_active ON payment_methods(tenant_id, is_active);
+
+## User addresses table (currently stored as JSON in orders) ##
+CREATE TABLE user_addresses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  label VARCHAR(50) NOT NULL COMMENT 'Home, Work, etc.',
+  county_code TINYINT NOT NULL,
+  details TEXT NOT NULL,
+  is_default BOOLEAN DEFAULT FALSE,
+  location POINT SRID 4326,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (county_code) REFERENCES counties(code),
+  SPATIAL INDEX(location)
+);
+
+##### Product reviews and ratings ###
+CREATE TABLE product_reviews (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  user_id INT NOT NULL,
+  order_id INT NOT NULL,
+  rating TINYINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  review_text TEXT,
+  images JSON COMMENT 'Array of image URLs',
+  is_approved BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES products(id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (order_id) REFERENCES orders(id),
+  UNIQUE KEY uk_order_review (order_id, product_id)
+);
+
+#### Add soft delete pattern to major tables #######
+ALTER TABLE products ADD COLUMN deleted_at TIMESTAMP NULL;
+ALTER TABLE vendors ADD COLUMN deleted_at TIMESTAMP NULL;
+ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP NULL;
+
+### Add constraint to prevent negative inventory ##
+ALTER TABLE product_items 
+ADD CONSTRAINT chk_inventory_not_negative CHECK (inventory_quantity >= 0);
+
+## Monthly sales by county with growth analysis ##
+WITH monthly_sales AS (
+  SELECT 
+    c.code AS county_code,
+    c.name AS county_name,
+    DATE_FORMAT(o.created_at, '%Y-%m') AS month,
+    SUM(o.total_amount) AS total_sales,
+    COUNT(DISTINCT o.id) AS order_count,
+    COUNT(DISTINCT o.customer_id) AS customer_count
+  FROM orders o
+  JOIN counties c ON o.delivery_county_code = c.code
+  WHERE o.status NOT IN ('cancelled')
+  GROUP BY c.code, c.name, DATE_FORMAT(o.created_at, '%Y-%m')
+)
+SELECT 
+  curr.month,
+  curr.county_code,
+  curr.county_name,
+  curr.total_sales,
+  curr.order_count,
+  curr.customer_count,
+  prev.total_sales AS prev_month_sales,
+  ROUND((curr.total_sales - prev.total_sales) / prev.total_sales * 100, 2) AS growth_rate
+FROM monthly_sales curr
+LEFT JOIN monthly_sales prev ON curr.county_code = prev.county_code 
+  AND prev.month = DATE_FORMAT(DATE_SUB(STR_TO_DATE(CONCAT(curr.month, '-01'), INTERVAL 1 MONTH), '%Y-%m')
+ORDER BY curr.month DESC, curr.total_sales DESC;
+
+## Add vendor_id to products table to track product ownership ##
+ALTER TABLE products ADD COLUMN vendor_id INT AFTER tenant_id;
+ALTER TABLE products ADD FOREIGN KEY (vendor_id) REFERENCES vendors(id);
+
+## Add JSON column for product attributes to handle flexible specifications
+ALTER TABLE products ADD COLUMN attributes JSON COMMENT 'Product specifications and attributes';
+
+## Add stock keeping unit (SKU) pattern validation
+ALTER TABLE product_items 
+ADD CONSTRAINT chk_sku_format CHECK (sku REGEXP '^[A-Z]{2}-[0-9]{6}-[A-Z0-9]{3}$');
+
+## User addresses table (currently stored as JSON in orders)
+CREATE TABLE user_addresses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  label VARCHAR(50) NOT NULL COMMENT 'Home, Work, etc.',
+  county_code TINYINT NOT NULL,
+  details TEXT NOT NULL,
+  is_default BOOLEAN DEFAULT FALSE,
+  location POINT SRID 4326,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (county_code) REFERENCES counties(code),
+  SPATIAL INDEX(location)
+);
+
+## Product reviews and ratings ##
+CREATE TABLE product_reviews (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  user_id INT NOT NULL,
+  order_id INT NOT NULL,
+  rating TINYINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  review_text TEXT,
+  images JSON COMMENT 'Array of image URLs',
+  is_approved BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES products(id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (order_id) REFERENCES orders(id),
+  UNIQUE KEY uk_order_review (order_id, product_id)
+);
+
+## Add payment webhooks table for async processing ##
+CREATE TABLE payment_webhooks (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  payment_id INT NOT NULL,
+  payload JSON NOT NULL,
+  status ENUM('pending', 'processed', 'failed') DEFAULT 'pending',
+  attempts TINYINT DEFAULT 0,
+  next_retry_at DATETIME,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  processed_at TIMESTAMP NULL,
+  FOREIGN KEY (payment_id) REFERENCES payments(id)
+);
+
+## Add mobile money request tracking ##
+ALTER TABLE payments ADD COLUMN mpesa_request_id VARCHAR(50);
+ALTER TABLE payments ADD COLUMN mpesa_checkout_id VARCHAR(50);
+ALTER TABLE payments ADD INDEX idx_mpesa_request (mpesa_request_id);
+
+CORE DATABASE INITIALIZATION
+CREATE DATABASE IF NOT EXISTS africa_commerce
+CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE africa_commerce;
+
+### MULTI-TENANT ARCHITECTURE ##
+CREATE TABLE tenants (
+id INT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+api_key CHAR(64) NOT NULL UNIQUE,
+plan ENUM('starter','pro','enterprise') DEFAULT 'starter',
+monthly_fee DECIMAL(10,2) DEFAULT 0.00,
+transaction_fee DECIMAL(5,2) DEFAULT 1.5,
+default_currency CHAR(3) DEFAULT 'KES',
+is_active BOOLEAN DEFAULT TRUE,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB PARTITION BY HASH(id) PARTITIONS 10;
+
+## PAYMENT GATEWAY INTEGRATION###
+CREATE TABLE payment_methods (
+id INT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(50) NOT NULL COMMENT 'M-Pesa, Airtel Money, Flutterwave',
+country_codes JSON NOT NULL,
+processing_fee DECIMAL(5,2) NOT NULL,
+config_schema JSON COMMENT 'Gateway-specific configuration'
+);
+
+## PRODUCT CATALOG SYSTEM ##
+CREATE TABLE products (
+id INT AUTO_INCREMENT PRIMARY KEY,
+tenant_id INT NOT NULL,
+name VARCHAR(255) NOT NULL,
+base_price DECIMAL(10,2) UNSIGNED CHECK (base_price > 0),
+inventory_quantity INT NOT NULL DEFAULT 0,
+is_active BOOLEAN DEFAULT TRUE,
+ai_recommendations JSON COMMENT 'ML-generated suggestions',
+FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+###ORDER MANAGEMENT SYSTEM##
+CREATE TABLE orders (
+id INT AUTO_INCREMENT PRIMARY KEY,
+tenant_id INT NOT NULL,
+total_amount DECIMAL(12,2) NOT NULL,
+status ENUM('pending','paid','shipped') DEFAULT 'pending',
+payment_method_id INT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+FOREIGN KEY (payment_method_id) REFERENCES payment_methods(id)
+) ENGINE=InnoDB PARTITION BY RANGE (YEAR(created_at)) (
+PARTITION p2023 VALUES LESS THAN (2024),
+PARTITION p2024 VALUES LESS THAN (2025)
+);
+
+## DELIVERY MANAGEMENT##
+CREATE TABLE delivery_zones (
+id INT AUTO_INCREMENT PRIMARY KEY,
+tenant_id INT NOT NULL,
+polygon_coordinates JSON COMMENT 'GeoJSON coverage area',
+base_fee DECIMAL(10,2) NOT NULL,
+is_active BOOLEAN DEFAULT TRUE,
+FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);
