@@ -1,13 +1,13 @@
-* 🛍️ AFRISHOP CONNECT E-COMMERCE Database System
+🛍️ AFRISHOP CONNECT E-COMMERCE Database System
 
-   **Project Vision**
+Project Vision
 Build a scalable, multi-tenant e-commerce platform tailored for African markets, combining global standards with local innovations like:
 Mobile-first payments (M-Pesa, Airtel Money, BNPL)
 Agent-driven last-mile delivery
 AI-powered marketplace tools
 Designed for SaaS monetization (subscriptions, transaction fees, ads) and gradual scalability from school project to commercial deployment.
 
-   **Core Tech Stack**
+CORE TECH STACK
 
 Layer	Tools
 Backend	Django (Python), Django REST Framework, Celery, PostgreSQL (with partitioning)
@@ -17,20 +17,21 @@ AI/ML	Python (scikit-learn, TensorFlow) for recommendations/fraud detection
 DevOps	Docker, AWS/GCP (Phase 2), GitHub Actions
 Analytics	Metabase (open-source BI), Materialized Views
 
-    **Core Features**
+Core Features
 Multi-vendor marketplace with tenant isolation
 Mobile-optimized checkout (test payments via Stripe)
 Vendor onboarding & admin dashboards
 Basic analytics (sales, inventory)
 
-       **Deliverables**
+Deliverables
 
 Full Django codebase + documentation
 ERD & schema design (SQL + Mermaid)
 Demo video + hosted prototype (Vercel/Heroku)
 Phase 2: Commercial Product (Post-Graduation)
 
-     **Monetization Ready**
+Monetization Ready
+
 Localized Payments: M-Pesa, Airtel Money, BNPL
 Delivery Integrations: Sendy, Pickup Mtaani APIs
 SaaS Features:
@@ -41,6 +42,7 @@ Africa-Specific Innovations
 USSD order tracking
 WhatsApp Commerce integration
 Agent network management
+
 
 ## 📊 ERD Preview
 
