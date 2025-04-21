@@ -1,4 +1,4 @@
-# 🛍️ E-Commerce Database System
+# 🛍️ AFRISHOP CONNECT E-Commerce Database System
 
  └──   Project Vision
 Build a scalable, multi-tenant e-commerce platform tailored for African markets, combining global standards with local innovations like:
