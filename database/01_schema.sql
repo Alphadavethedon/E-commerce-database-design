@@ -1209,3 +1209,144 @@ base_fee DECIMAL(10,2) NOT NULL,
 is_active BOOLEAN DEFAULT TRUE,
 FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
+
+###AI CHATBOT##
+CREATE TABLE chatbot_interactions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    user_id INT,
+    session_id VARCHAR(100),
+    message_text TEXT NOT NULL,
+    response_text TEXT,
+    intent VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+
+###SOCIAL LOGIN##
+CREATE TABLE social_logins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    provider ENUM('google', 'facebook', 'twitter') NOT NULL,
+    provider_user_id VARCHAR(100) NOT NULL,
+    access_token VARCHAR(255),
+    refresh_token VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_provider_user (provider, provider_user_id)
+) ENGINE=InnoDB;
+
+
+#####SEO TRACKING###
+CREATE TABLE page_views (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    user_id INT,
+    page_url VARCHAR(255) NOT NULL,
+    referrer_url VARCHAR(255),
+    device_type ENUM('mobile', 'desktop', 'tablet'),
+    session_id VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE seo_metrics (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    product_id INT,
+    category_id INT,
+    keyword VARCHAR(100) NOT NULL,
+    impressions INT DEFAULT 0,
+    clicks INT DEFAULT 0,
+    click_through_rate DECIMAL(5,2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES product_categories(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+
+####STORE FEATURES###
+CREATE TABLE feature_flags (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    is_enabled BOOLEAN DEFAULT FALSE,
+    conditions JSON COMMENT 'Rules for enabling flag',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_flag_name (tenant_id, name)
+) ENGINE=InnoDB;
+
+
+
+###FEATURE FLAGS##
+
+CREATE TABLE feature_flags (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    is_enabled BOOLEAN DEFAULT FALSE,
+    conditions JSON COMMENT 'Rules for enabling flag',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_flag_name (tenant_id, name)
+) ENGINE=InnoDB;
+
+
+###INVOICE STORAGE####
+CREATE TABLE invoices (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    order_id INT NOT NULL,
+    invoice_number VARCHAR(50) NOT NULL,
+    pdf_url VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_invoice_number (tenant_id, invoice_number)
+) ENGINE=InnoDB;
+
+##UI TRANSLATIONS##
+CREATE TABLE ui_translations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    key VARCHAR(255) NOT NULL,
+    language ENUM('sw', 'en', 'kam', 'kik', 'luo') NOT NULL,
+    translation TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_translation_key (tenant_id, key, language)
+) ENGINE=InnoDB;
+
+ALTER TABLE users ADD COLUMN preferred_language ENUM('sw', 'en', 'kam', 'kik', 'luo') DEFAULT 'en';
+
+###ADMIN SETTINGS###
+CREATE TABLE admin_settings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    key VARCHAR(100) NOT NULL,
+    value JSON NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_setting_key (tenant_id, key)
+) ENGINE=InnoDB;
+
+###SYNC LOGS##
+CREATE TABLE offline_sync_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    user_id INT,
+    action_type ENUM('cart_add', 'order_submit', 'wishlist_add') NOT NULL,
+    data JSON NOT NULL,
+    status ENUM('pending', 'synced', 'failed') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    synced_at TIMESTAMP NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+####
+
