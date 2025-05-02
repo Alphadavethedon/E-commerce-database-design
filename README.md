@@ -1,4 +1,3 @@
-Great! Here’s a **professionally formatted and engaging `README.md`** for your **Afrishop Connect E-Commerce Database System** project — tailored for GitHub and potential collaborators, employers, or investors:
 
 ---
 
