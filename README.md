@@ -77,7 +77,8 @@ Afrishop Connect aims to:
 
 ## 📊 ERD Preview
 
-[![ERD Diagram](./ERD/diagram.png)](https://www.mermaidchart.com/raw/ad6f6e38-669a-4f07-964d-a6cfda96d182?theme=light&version=v0.1&format=svg)
+![image](https://github.com/user-attachments/assets/84e3342b-44dd-4110-a122-99ce8b8fcb9f)
+
 
 
 > [🖼️ View ERD in MermaidChart](https://www.mermaidchart.com/app/projects/c29cd0e2-b502-4b05-b812-d1e0433c630a/diagrams/ad6f6e38-669a-4f07-964d-a6cfda96d182/version/v0.1/edit)
